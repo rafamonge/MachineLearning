@@ -1,0 +1,88 @@
+---
+title: "CourseProject "
+author: "Rafael Monge"
+date: "25 de octubre de 2015"
+output: html_document
+---
+
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+## Cleaning Data
+
+The first step is to clean data and remove columns that do not help in the prediction
+
+1. Removed columns that have near zero var (using NearZeroVar function from te Caret package)
+2. Removed the X column
+3. Removed all factor classes except username and classe
+4. Removed columns with NAs.
+
+```{r,include=FALSE}
+library(caret)
+library(dplyr)
+library(randomForest)
+set.seed(759302)
+
+training <- read.csv("pml-training.csv")
+testing <- read.csv("pml-testing.csv")
+
+## start cleaning dataset
+cleanedTraining<- training
+
+
+## removing columns with near zero variance
+columnsToRemove <- nearZeroVar(cleanedTraining)
+
+columnsToRemove <- c(columnsToRemove, 1) ## also removing the x columnx
+cleanedTraining <- training[,-columnsToRemove]
+
+factorsToRemove <- sapply(cleanedTraining, is.factor)
+factorsToRemove["user_name"] <- FALSE ## Keep the username
+factorsToRemove["classe"] <- FALSE ## keep the classe
+factorsToKeep <- !factorsToRemove
+
+cleanedTraining <-  cleanedTraining[, factorsToKeep]
+
+na_columns <- (colSums(is.na(cleanedTraining)) > 0)
+cleanedTraining <- cleanedTraining[, !na_columns]
+```
+
+This leaves 57 columns: 
+
+```{r, echo=FALSE}
+names(cleanedTraining)
+```
+
+Next, a random forest model is built on the cleaned training set. It is using respeated 10 fold cross validation with 5 repeats in order to find the best mtry value. The best mtry is 31. It has an accuracy of 0.99 ( this is our estimate of out of sample error). The ranfom forest created uses 10 trees.
+
+
+
+```{r}
+## train control will be repeated cross validation with 10k repeated 5 times.
+ctrl = trainControl(method="repeatedcv", number=10, repeats=5, selectionFunction = "oneSE")
+## models
+randomForest1 <- train(classe  ~ ., method ="rf", data = cleanedTraining, ntree=10,trControl =ctrl )
+randomForest1
+```
+Next, the confusion matrix using the training set
+```{r}
+## Confusion Matrix for Training Set
+prediction <- predict(randomForest1, newdata = training)
+confusionMatrix(prediction,training$classe)
+```
+Finally, the predictions for testing set
+```{r}
+predictionForTesting<- predict(randomForest1, newdata = testing)
+predictionForTesting
+```
+Creating files for automated review
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predictionForTesting)
+```
